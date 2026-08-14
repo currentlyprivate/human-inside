@@ -7,6 +7,9 @@ next-env.d.ts
 
 # local capture output — never commit footage
 /capture-out
+
+# private ops notes — stays on this machine
+RUNBOOK.md
 *.ts.tmp
 *.m3u8.tmp
 .env*
