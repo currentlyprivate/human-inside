@@ -96,6 +96,9 @@ export default function Viewer() {
   }, []);
 
   const live = !!state?.live && !!state?.stream_url;
+  // Stopped (not panicked): the last minutes of the session replay on loop.
+  const rerun = !live && !!state?.stream_url;
+  const showing = live || rerun;
   const elapsed = useElapsed(live ? state?.started_at ?? null : null);
 
   // While LIVE with no picture (footage still aging through the delay window),
@@ -112,7 +115,7 @@ export default function Viewer() {
 
   // The playlist comes from the app (always fresh, blackout-aware); only the
   // segments inside it are fetched from the Blob CDN.
-  useHls(videoRef, live ? "/api/stream.m3u8" : null, attempt);
+  useHls(videoRef, showing ? "/api/stream.m3u8" : null, attempt);
 
   return (
     <main style={{ minHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column", gap: "0.75em" }}>
@@ -123,6 +126,11 @@ export default function Viewer() {
             <>
               <b style={{ color: "red" }}>LIVE</b> {elapsed} — {state?.name || "someone"}
               {state?.working_on ? <>, working on {state.working_on}</> : null}
+            </>
+          ) : rerun ? (
+            <>
+              offline — replaying the last minutes of {state?.name || "the last"} session
+              {state?.working_on ? <>: {state.working_on}</> : null}
             </>
           ) : (
             <>offline</>
@@ -143,12 +151,13 @@ export default function Viewer() {
           minHeight: "40vh",
         }}
       >
-        {live ? (
+        {showing ? (
           <video
             ref={videoRef}
             muted
             playsInline
             autoPlay
+            loop={rerun}
             style={{ width: "100%", height: "100%", objectFit: "contain", background: "#2b2b2e" }}
           />
         ) : (

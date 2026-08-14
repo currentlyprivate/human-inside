@@ -74,14 +74,15 @@ export async function writeSession(next: SessionState): Promise<SessionState> {
 // blackout is exposed so the publisher can tell panic apart from a plain stop
 // (panic makes it erase recent public segments, not just halt).
 export function publicView(s: SessionState) {
-  const blacked = s.blackout || !s.live;
   return {
     name: s.name,
     working_on: s.working_on,
     live: s.live && !s.blackout,
     blackout: s.blackout,
     started_at: s.live && !s.blackout ? s.started_at : null,
-    stream_url: blacked ? null : s.stream_url,
+    // Kept when merely stopped, so viewers get the end-of-day replay;
+    // blackout still severs it entirely.
+    stream_url: s.blackout ? null : s.stream_url,
     delay_seconds: s.delay_seconds,
   };
 }

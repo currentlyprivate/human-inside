@@ -6,7 +6,7 @@ node_modules
 next-env.d.ts
 
 # local capture output — never commit footage
-/capture-out
+capture-out/
 
 # private ops notes — stays on this machine
 RUNBOOK.md

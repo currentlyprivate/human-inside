@@ -27,7 +27,9 @@ export async function GET() {
   const s = await readSession();
   // stream_url holds the current broadcast's segment prefix, e.g. "stream/ab12cd34"
   // (per-session and random, so a past session's urls die with the session).
-  if (!s.live || s.blackout || !s.stream_url || !s.stream_url.startsWith("stream/")) {
+  // A plain stop keeps the last ~10 minutes up as a finished replay — the
+  // window stays lit a little after the human leaves. Panic erases everything.
+  if (s.blackout || !s.stream_url || !s.stream_url.startsWith("stream/")) {
     return new NextResponse(TOMBSTONE, { headers: HEADERS });
   }
   try {
@@ -51,6 +53,7 @@ export async function GET() {
       lines.push(`#EXTINF:${SEG_SECONDS.toFixed(3)},`);
       lines.push(b.url);
     }
+    if (!s.live) lines.push("#EXT-X-ENDLIST"); // stopped: a finished replay, not a live edge
     return new NextResponse(lines.join("\n") + "\n", { headers: HEADERS });
   } catch {
     return new NextResponse(TOMBSTONE, { headers: HEADERS }); // fail closed: dark

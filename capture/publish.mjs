@@ -24,7 +24,7 @@
 import { randomBytes } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { put, del } from "@vercel/blob";
+import { put, del, list } from "@vercel/blob";
 
 const DELAY = Number(process.env.DELAY_SECONDS ?? 45);
 const OUT_DIR = process.env.OUT_DIR ?? "./capture-out";
@@ -148,6 +148,18 @@ async function main() {
   if (!session) {
     console.error("Cannot reach SESSION_URL — check the deploy, then rerun.");
     process.exit(1);
+  }
+  // Sweep previous sessions' segments (they served as the end-of-day replay
+  // until now) so exactly one session's tail ever exists in storage.
+  try {
+    const { blobs } = await list({ prefix: "stream/" });
+    const stale = blobs.filter((b) => !b.pathname.startsWith(`${PREFIX}/`));
+    if (stale.length) {
+      await del(stale.map((b) => b.url));
+      console.log(`  swept ${stale.length} segments from previous sessions\n`);
+    }
+  } catch {
+    /* sweep is hygiene; a failed sweep never blocks broadcasting */
   }
   while (!stopped) {
     await tick().catch((e) => console.error("\ntick error:", e.message));
