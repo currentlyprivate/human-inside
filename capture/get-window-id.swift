@@ -6,7 +6,7 @@ import Foundation
 
 let appName = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "Ghostty"
 
-func firstWindow(_ opts: CGWindowListOption) -> Int? {
+func firstWindow(_ opts: CGWindowListOption) -> (Int, String)? {
   // onScreenOnly returns windows front-to-back, so the first match is the
   // frontmost window of the app — the one the broadcaster is working in.
   guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else {
@@ -17,14 +17,16 @@ func firstWindow(_ opts: CGWindowListOption) -> Int? {
           let layer = w[kCGWindowLayer as String] as? Int, layer == 0,
           let id = w[kCGWindowNumber as String] as? Int
     else { continue }
-    return id
+    let title = (w[kCGWindowName as String] as? String) ?? ""
+    return (id, title)
   }
   return nil
 }
 
-if let id = firstWindow([.optionOnScreenOnly, .excludeDesktopElements])
+if let (id, title) = firstWindow([.optionOnScreenOnly, .excludeDesktopElements])
   ?? firstWindow([.optionAll, .excludeDesktopElements]) {
   print(id)
+  print(title)
 } else {
   FileHandle.standardError.write("no \(appName) window found\n".data(using: .utf8)!)
   exit(1)

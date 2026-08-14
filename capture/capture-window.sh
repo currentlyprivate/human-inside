@@ -22,9 +22,15 @@ mkdir -p "$OUT_DIR"
 # "aged" already and the publisher would broadcast 20-minute-old footage.
 rm -f "$OUT_DIR"/seg_*.ts "$OUT_DIR"/local.m3u8
 
-WINDOW_ID=$(xcrun swift get-window-id.swift "$APP_NAME")
-echo "Human Inside · capturing ONLY the $APP_NAME window (id $WINDOW_ID) @ ${FPS}fps → $OUT_DIR"
-echo "  (keep the window un-minimized; segments every ${SEG_SECONDS}s)"
+# The window you launch this from is frontmost by definition — give the
+# broadcaster time to focus the window they actually want on air.
+echo "Focus the $APP_NAME window you want ON AIR. Locking on in 5 seconds…"
+for i in 5 4 3 2 1; do printf '  %d…\n' "$i"; sleep 1; done
+WINDOW_INFO=$(xcrun swift get-window-id.swift "$APP_NAME")
+WINDOW_ID=$(echo "$WINDOW_INFO" | head -1)
+WINDOW_TITLE=$(echo "$WINDOW_INFO" | sed -n 2p)
+echo "Human Inside · capturing ONLY: “${WINDOW_TITLE:-$APP_NAME}” (window $WINDOW_ID) @ ${FPS}fps → $OUT_DIR"
+echo "  (keep that window un-minimized; segments every ${SEG_SECONDS}s)"
 
 # Strictly paced capture loop: emits one JPEG per 1/FPS seconds to stdout.
 # python3 keeps the cadence exact so timestamps don't drift over hours.
@@ -35,14 +41,21 @@ interval = 1.0 / fps
 out = sys.stdout.buffer
 tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False).name
 next_t = time.monotonic()
+fails = 0
 try:
     while True:
         r = subprocess.run(["screencapture", "-x", "-o", "-l", window_id, "-t", "jpg", tmp])
         if r.returncode == 0 and os.path.getsize(tmp) > 0:
+            if fails:
+                print("\n>>> window capturable again — feed resumed", file=sys.stderr)
+            fails = 0
             with open(tmp, "rb") as f:
                 out.write(f.read())
             out.flush()
-        # else: window gone/minimized — emit nothing; ffmpeg just waits
+        else:
+            fails += 1
+            if fails % 10 == 1:  # loud, repeated — the public feed is FROZEN
+                print(f"\n>>> WINDOW NOT CAPTURABLE ({fails} tries) — minimized or closed? THE FEED IS FROZEN", file=sys.stderr)
         next_t += interval
         time.sleep(max(0.0, next_t - time.monotonic()))
 finally:
