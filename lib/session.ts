@@ -1,4 +1,4 @@
-import { put, list } from "@vercel/blob";
+import { put, del, list } from "@vercel/blob";
 
 // The single source of truth for the broadcast, stored as one small JSON blob.
 // Serverless-friendly: no long-lived process, globally readable, instantly writable.
@@ -13,7 +13,12 @@ export type SessionState = {
   updated_at: number;
 };
 
-const BLOB_PATH = "session/state.json";
+// State is written as a NEW immutable blob every time and readers take the
+// newest by pathname. Never overwrite a blob: overwrites are eventually
+// consistent (up to tens of seconds, variably) while creations show up in
+// list() within a couple of seconds — and panic latency rides on this.
+const STATE_PREFIX = "session/state-";
+const KEEP_STATES = 5;
 
 export const DEFAULT_STATE: SessionState = {
   name: "",
@@ -28,11 +33,11 @@ export const DEFAULT_STATE: SessionState = {
 
 export async function readSession(): Promise<SessionState> {
   try {
-    const { blobs } = await list({ prefix: BLOB_PATH, limit: 1 });
-    const hit = blobs.find((b) => b.pathname === BLOB_PATH);
-    if (!hit) return DEFAULT_STATE;
-    // Cache-bust: the blob CDN caches aggressively; we need the freshest state.
-    const res = await fetch(`${hit.url}?t=${Date.now()}`, { cache: "no-store" });
+    const { blobs } = await list({ prefix: STATE_PREFIX, limit: 1000 });
+    if (blobs.length === 0) return DEFAULT_STATE;
+    const latest = blobs.reduce((a, b) => (a.pathname > b.pathname ? a : b));
+    // The blob is immutable, so any copy of it is correct — no cache-busting needed.
+    const res = await fetch(latest.url, { cache: "no-store" });
     if (!res.ok) return DEFAULT_STATE;
     const data = (await res.json()) as Partial<SessionState>;
     return { ...DEFAULT_STATE, ...data };
@@ -43,13 +48,25 @@ export async function readSession(): Promise<SessionState> {
 
 export async function writeSession(next: SessionState): Promise<SessionState> {
   const withStamp = { ...next, updated_at: Date.now() };
-  await put(BLOB_PATH, JSON.stringify(withStamp), {
+  // Zero-padded epoch ms so pathnames sort chronologically.
+  const path = `${STATE_PREFIX}${String(withStamp.updated_at).padStart(15, "0")}.json`;
+  await put(path, JSON.stringify(withStamp), {
     access: "public",
     contentType: "application/json",
     addRandomSuffix: false,
-    allowOverwrite: true,
     cacheControlMaxAge: 0,
   });
+  // Prune old state blobs; best-effort, never blocks the write.
+  try {
+    const { blobs } = await list({ prefix: STATE_PREFIX, limit: 1000 });
+    const stale = blobs
+      .map((b) => b)
+      .sort((a, b) => (a.pathname > b.pathname ? -1 : 1))
+      .slice(KEEP_STATES);
+    if (stale.length) await del(stale.map((b) => b.url));
+  } catch {
+    /* pruning is hygiene, not correctness */
+  }
   return withStamp;
 }
 
