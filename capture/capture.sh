@@ -32,7 +32,7 @@ exec ffmpeg -hide_banner -loglevel error \
   -g $((FPS * SEG_SECONDS)) -keyint_min $((FPS * SEG_SECONDS)) -sc_threshold 0 \
   -f hls \
   -hls_time "$SEG_SECONDS" \
-  -hls_list_size 0 \
-  -hls_flags append_list+omit_endlist+program_date_time \
+  -hls_list_size 150 \
+  -hls_flags delete_segments+omit_endlist+program_date_time \
   -hls_segment_filename "$OUT_DIR/seg_%06d.ts" \
   "$OUT_DIR/local.m3u8"

@@ -52,7 +52,7 @@ exec ffmpeg -hide_banner -loglevel error \
   -g $(printf '%.0f' "$(echo "$FPS * $SEG_SECONDS" | bc)") -keyint_min 1 -sc_threshold 0 \
   -f hls \
   -hls_time "$SEG_SECONDS" \
-  -hls_list_size 0 \
-  -hls_flags append_list+omit_endlist+program_date_time \
+  -hls_list_size 150 \
+  -hls_flags delete_segments+omit_endlist+program_date_time \
   -hls_segment_filename "$OUT_DIR/seg_%06d.ts" \
   "$OUT_DIR/local.m3u8"
