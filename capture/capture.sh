@@ -21,9 +21,13 @@ mkdir -p "$OUT_DIR"
 echo "Human Inside · capturing screen[$SCREEN_INDEX] @ ${FPS}fps → $OUT_DIR"
 echo "  (segments every ${SEG_SECONDS}s — the delayed uploader publishes these)"
 
-exec ffmpeg -hide_banner -loglevel warning \
-  -f avfoundation -capture_cursor 1 -framerate "$FPS" -i "${SCREEN_INDEX}:none" \
-  -vf "scale=${SCALE},format=yuv420p" \
+# -use_wallclock_as_timestamps: avfoundation screen devices deliver frames with
+# a broken/jumping pts clock on recent macOS; wallclock stamping fixes the
+# non-monotonic DTS storm that otherwise prevents segments from ever finishing.
+exec ffmpeg -hide_banner -loglevel error \
+  -f avfoundation -capture_cursor 1 -framerate "$FPS" \
+  -use_wallclock_as_timestamps 1 -i "${SCREEN_INDEX}:none" \
+  -vf "fps=${FPS},scale=${SCALE},format=yuv420p" \
   -c:v libx264 -preset veryfast -tune zerolatency -crf "$CRF" \
   -g $((FPS * SEG_SECONDS)) -keyint_min $((FPS * SEG_SECONDS)) -sc_threshold 0 \
   -f hls \
