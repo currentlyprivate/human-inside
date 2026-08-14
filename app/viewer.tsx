@@ -30,7 +30,15 @@ function useElapsed(startedAt: number | null): string {
 // (loaded lazily from a CDN) everywhere else. `attempt` re-runs the attach —
 // used to retry during warm-up, when the session is LIVE but the first footage
 // hasn't aged past the delay window yet and the playlist is still empty.
-function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, url: string | null, attempt: number) {
+// `mode` re-runs it too: a replay (finished VOD) must be torn down and
+// reattached when the session flips back to LIVE, or the tab loops the old
+// session forever.
+function useHls(
+  videoRef: React.RefObject<HTMLVideoElement | null>,
+  url: string | null,
+  attempt: number,
+  mode: string
+) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !url) return;
@@ -69,7 +77,7 @@ function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, url: string 
       script.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoRef, url, attempt]);
+  }, [videoRef, url, attempt, mode]);
 }
 
 export default function Viewer() {
@@ -115,7 +123,7 @@ export default function Viewer() {
 
   // The playlist comes from the app (always fresh, blackout-aware); only the
   // segments inside it are fetched from the Blob CDN.
-  useHls(videoRef, showing ? "/api/stream.m3u8" : null, attempt);
+  useHls(videoRef, showing ? "/api/stream.m3u8" : null, attempt, live ? "live" : "rerun");
 
   return (
     <main style={{ minHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column", gap: "0.75em" }}>
