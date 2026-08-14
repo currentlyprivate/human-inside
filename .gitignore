@@ -13,3 +13,6 @@ RUNBOOK.md
 *.ts.tmp
 *.m3u8.tmp
 .env*
+
+# compiled capture helper — rebuilt on demand
+capture/.get-window-id
