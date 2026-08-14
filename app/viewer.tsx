@@ -27,8 +27,10 @@ function useElapsed(startedAt: number | null): string {
 }
 
 // Attach an HLS source to a <video>, using native HLS on Safari and hls.js
-// (loaded lazily from a CDN) everywhere else.
-function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, url: string | null) {
+// (loaded lazily from a CDN) everywhere else. `attempt` re-runs the attach —
+// used to retry during warm-up, when the session is LIVE but the first footage
+// hasn't aged past the delay window yet and the playlist is still empty.
+function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, url: string | null, attempt: number) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !url) return;
@@ -66,7 +68,8 @@ function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, url: string 
       if (hls) hls.destroy();
       script.remove();
     };
-  }, [videoRef, url]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoRef, url, attempt]);
 }
 
 export default function Viewer() {
@@ -94,7 +97,22 @@ export default function Viewer() {
 
   const live = !!state?.live && !!state?.stream_url;
   const elapsed = useElapsed(live ? state?.started_at ?? null : null);
-  useHls(videoRef, live ? state?.stream_url ?? null : null);
+
+  // While LIVE with no picture (footage still aging through the delay window),
+  // retry the player every few seconds instead of giving up on an empty playlist.
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => {
+      const v = videoRef.current;
+      if (v && v.readyState < 2) setAttempt((a) => a + 1);
+    }, 6000);
+    return () => clearInterval(id);
+  }, [live]);
+
+  // The playlist comes from the app (always fresh, blackout-aware); only the
+  // segments inside it are fetched from the Blob CDN.
+  useHls(videoRef, live ? "/api/stream.m3u8" : null, attempt);
 
   return (
     <main style={{ minHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column", gap: "0.75em" }}>
