@@ -35,6 +35,7 @@ const POLL_MS = 1000;
 const RETAIN = 300; // ~10 min of public footage; older segments are deleted
 
 const uploaded = new Map(); // seg filename -> public url (insertion-ordered)
+const startedAtMs = Date.now(); // footage recorded before the publisher started never publishes
 let panicAtMs = null; // segments recorded before this moment NEVER publish
 let stopped = false;
 
@@ -114,7 +115,10 @@ async function tick() {
     try {
       const s = await stat(join(OUT_DIR, f));
       // Age from the segment's mtime — only publish once it's older than DELAY.
-      // Anything recorded before a panic stays private, even across re-Go-Live.
+      // Anything recorded before a panic stays private, even across re-Go-Live,
+      // and anything recorded before THIS publisher started is not ours to
+      // vouch for (stale files from an earlier session) — never publish it.
+      if (s.mtimeMs <= startedAtMs) continue;
       if (panicAtMs !== null && s.mtimeMs <= panicAtMs) continue;
       if (now - s.mtimeMs >= DELAY * 1000) aged.push(f);
     } catch {

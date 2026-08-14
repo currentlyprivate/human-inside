@@ -18,6 +18,9 @@ SCALE="${SCALE:-1600:-2}"
 
 cd "$(dirname "$0")"
 mkdir -p "$OUT_DIR"
+# Fresh session, fresh directory: stale segments from a previous run would be
+# "aged" already and the publisher would broadcast 20-minute-old footage.
+rm -f "$OUT_DIR"/seg_*.ts "$OUT_DIR"/local.m3u8
 
 WINDOW_ID=$(xcrun swift get-window-id.swift "$APP_NAME")
 echo "Human Inside · capturing ONLY the $APP_NAME window (id $WINDOW_ID) @ ${FPS}fps → $OUT_DIR"

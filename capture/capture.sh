@@ -17,6 +17,9 @@ CRF="${CRF:-30}"                    # higher = smaller/softer; readable terminal
 SCALE="${SCALE:-1600:-2}"           # downscale width to 1600, keep aspect
 
 mkdir -p "$OUT_DIR"
+# Fresh session, fresh directory: stale segments from a previous run would be
+# "aged" already and the publisher would broadcast 20-minute-old footage.
+rm -f "$OUT_DIR"/seg_*.ts "$OUT_DIR"/local.m3u8
 
 echo "Human Inside · capturing screen[$SCREEN_INDEX] @ ${FPS}fps → $OUT_DIR"
 echo "  (segments every ${SEG_SECONDS}s — the delayed uploader publishes these)"
