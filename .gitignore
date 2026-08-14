@@ -1,0 +1,12 @@
+node_modules
+.next
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# local capture output — never commit footage
+/capture-out
+*.ts.tmp
+*.m3u8.tmp
+.env*

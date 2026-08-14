@@ -1,0 +1,12 @@
+{
+  "name": "humaninside-capture",
+  "private": true,
+  "type": "module",
+  "description": "Local delayed publisher for Human Inside. Runs on the broadcaster's machine.",
+  "scripts": {
+    "publish": "node publish.mjs"
+  },
+  "dependencies": {
+    "@vercel/blob": "^1.0.0"
+  }
+}

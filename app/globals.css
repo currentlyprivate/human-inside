@@ -1,0 +1,37 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Not Twitch. Near-black, low contrast, one dim signal color. */
+  --bg: #0a0a0b;
+  --panel: #0f0f11;
+  --edge: #1c1c20;
+  --ink: #e7e7ea;
+  --ink-dim: #74747c;
+  --ink-faint: #45454c;
+  --live: #d8664a; /* a dim ember, not a screaming red */
+  --font: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1; /* tabular numerals so the clock doesn't jitter */
+}
+
+::selection {
+  background: rgba(216, 102, 74, 0.25);
+}
+
+a {
+  color: inherit;
+}
