@@ -22,40 +22,55 @@ mkdir -p "$OUT_DIR"
 # "aged" already and the publisher would broadcast 20-minute-old footage.
 rm -f "$OUT_DIR"/seg_*.ts "$OUT_DIR"/local.m3u8
 
-# The window you launch this from is frontmost by definition — give the
-# broadcaster time to focus the window they actually want on air.
-echo "Focus the $APP_NAME window you want ON AIR. Locking on in 5 seconds…"
-for i in 5 4 3 2 1; do printf '  %d…\n' "$i"; sleep 1; done
-WINDOW_INFO=$(xcrun swift get-window-id.swift "$APP_NAME")
-WINDOW_ID=$(echo "$WINDOW_INFO" | head -1)
-WINDOW_TITLE=$(echo "$WINDOW_INFO" | sed -n 2p)
-echo "Human Inside · capturing ONLY: “${WINDOW_TITLE:-$APP_NAME}” (window $WINDOW_ID) @ ${FPS}fps → $OUT_DIR"
-echo "  (keep that window un-minimized; segments every ${SEG_SECONDS}s)"
+# Ghostty uses macOS NATIVE tabs — each tab is its own window at the system
+# level. A static window lock therefore pins the broadcast to one tab. Instead
+# we FOLLOW the frontmost Ghostty tab: switch tabs and the feed switches with
+# you; focus another app and the feed stays on your last tab. The helper is
+# compiled once so re-resolving every second is cheap.
+BIN=".get-window-id"
+if [ ! -x "$BIN" ] || [ get-window-id.swift -nt "$BIN" ]; then
+  xcrun swiftc -O get-window-id.swift -o "$BIN"
+fi
+echo "Human Inside · following the frontmost $APP_NAME tab @ ${FPS}fps → $OUT_DIR"
+echo "  (whatever $APP_NAME tab you focus is ON AIR; segments every ${SEG_SECONDS}s)"
 
 # Strictly paced capture loop: emits one JPEG per 1/FPS seconds to stdout.
 # python3 keeps the cadence exact so timestamps don't drift over hours.
-python3 - "$WINDOW_ID" "$FPS" <<'PY' |
+python3 - "$BIN" "$APP_NAME" "$FPS" <<'PY' |
 import subprocess, sys, time, os, tempfile
-window_id, fps = sys.argv[1], float(sys.argv[2])
+bin_path, app_name, fps = sys.argv[1], sys.argv[2], float(sys.argv[3])
 interval = 1.0 / fps
 out = sys.stdout.buffer
 tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False).name
 next_t = time.monotonic()
 fails = 0
+window_id, title, last_resolve = None, None, 0.0
 try:
     while True:
-        r = subprocess.run(["screencapture", "-x", "-o", "-l", window_id, "-t", "jpg", tmp])
-        if r.returncode == 0 and os.path.getsize(tmp) > 0:
-            if fails:
-                print("\n>>> window capturable again — feed resumed", file=sys.stderr)
-            fails = 0
-            with open(tmp, "rb") as f:
-                out.write(f.read())
-            out.flush()
-        else:
-            fails += 1
-            if fails % 10 == 1:  # loud, repeated — the public feed is FROZEN
-                print(f"\n>>> WINDOW NOT CAPTURABLE ({fails} tries) — minimized or closed? THE FEED IS FROZEN", file=sys.stderr)
+        now = time.monotonic()
+        if now - last_resolve >= 1.0:  # follow the frontmost tab, cheaply
+            last_resolve = now
+            r = subprocess.run(["./" + bin_path, app_name], capture_output=True, text=True)
+            if r.returncode == 0:
+                lines = r.stdout.splitlines()
+                new_id = lines[0] if lines else None
+                new_title = lines[1] if len(lines) > 1 else ""
+                if new_id and new_id != window_id:
+                    window_id, title = new_id, new_title
+                    print(f"\n>>> now on air: “{title or app_name}” (window {window_id})", file=sys.stderr)
+        if window_id:
+            r = subprocess.run(["screencapture", "-x", "-o", "-l", window_id, "-t", "jpg", tmp])
+            if r.returncode == 0 and os.path.getsize(tmp) > 0:
+                if fails:
+                    print("\n>>> capturable again — feed resumed", file=sys.stderr)
+                fails = 0
+                with open(tmp, "rb") as f:
+                    out.write(f.read())
+                out.flush()
+            else:
+                fails += 1
+                if fails % 10 == 1:  # loud, repeated — the public feed is FROZEN
+                    print(f"\n>>> WINDOW NOT CAPTURABLE ({fails} tries) — THE FEED IS FROZEN", file=sys.stderr)
         next_t += interval
         time.sleep(max(0.0, next_t - time.monotonic()))
 finally:
