@@ -7,15 +7,18 @@
 }
 
 :root {
-  /* Not Twitch. Near-black, low contrast, one dim signal color. */
-  --bg: #0a0a0b;
-  --panel: #0f0f11;
-  --edge: #1c1c20;
-  --ink: #e7e7ea;
-  --ink-dim: #74747c;
-  --ink-faint: #45454c;
-  --live: #d8664a; /* a dim ember, not a screaming red */
-  --font: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* White page, plain type; the terminal window is the only dark thing. */
+  --bg: #ffffff;
+  --panel: #f4f4f4;
+  --edge: #e0e0e0;
+  --ink: #1a1a1a;
+  --ink-dim: #6e6e6e;
+  --ink-faint: #a3a3a3;
+  --live: #c4573d; /* a dim ember, not a screaming red */
+  --window: #2b2b2e; /* the terminal window's dark gray */
+  --window-ink: #8f8f96; /* text shown inside the dark window */
+  --window-ink-faint: #5c5c62;
+  --font: Arial, Helvetica, sans-serif;
 }
 
 html,
@@ -25,11 +28,10 @@ body {
   color: var(--ink);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "tnum" 1; /* tabular numerals so the clock doesn't jitter */
 }
 
 ::selection {
-  background: rgba(216, 102, 74, 0.25);
+  background: rgba(196, 87, 61, 0.2);
 }
 
 a {

@@ -150,7 +150,7 @@ export default function Viewer() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#000",
+          background: "var(--window)",
           border: "1px solid var(--edge)",
           borderRadius: 6,
           overflow: "hidden",
@@ -164,11 +164,11 @@ export default function Viewer() {
             muted
             playsInline
             autoPlay
-            style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000" }}
+            style={{ width: "100%", height: "100%", objectFit: "contain", background: "var(--window)" }}
           />
         ) : (
-          <div style={{ textAlign: "center", color: "var(--ink-faint)", fontSize: 13, lineHeight: 1.9 }}>
-            <div style={{ color: "var(--ink-dim)", fontSize: 15 }}>the window is dark</div>
+          <div style={{ textAlign: "center", color: "var(--window-ink-faint)", fontSize: 13, lineHeight: 1.9 }}>
+            <div style={{ color: "var(--window-ink)", fontSize: 15 }}>the window is dark</div>
             <div>no one is working right now</div>
           </div>
         )}
@@ -188,13 +188,13 @@ export default function Viewer() {
         .pulse {
           width: 8px; height: 8px; border-radius: 50%;
           background: var(--live);
-          box-shadow: 0 0 0 0 rgba(216,102,74,0.5);
+          box-shadow: 0 0 0 0 rgba(196,87,61,0.5);
           animation: pulse 2.4s ease-out infinite;
         }
         @keyframes pulse {
-          0% { box-shadow: 0 0 0 0 rgba(216,102,74,0.45); }
-          70% { box-shadow: 0 0 0 7px rgba(216,102,74,0); }
-          100% { box-shadow: 0 0 0 0 rgba(216,102,74,0); }
+          0% { box-shadow: 0 0 0 0 rgba(196,87,61,0.45); }
+          70% { box-shadow: 0 0 0 7px rgba(196,87,61,0); }
+          100% { box-shadow: 0 0 0 0 rgba(196,87,61,0); }
         }
       `}</style>
     </main>
