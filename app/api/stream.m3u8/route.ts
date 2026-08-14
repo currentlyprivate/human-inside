@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
+import { list } from "@vercel/blob";
 import { readSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-// The public playlist, served fresh through the app. Blob clamps cache-control
-// to a 60s minimum, which is fatal for a live HLS playlist (players re-fetch it
-// every ~2s) — so viewers get it here with no-store, and only the fat immutable
-// segments come straight off the Blob CDN. This also makes panic instant at the
-// playlist level: blackout wins before we even look at Blob.
+// The public playlist, built by the app on every request. There is no playlist
+// blob at all: fixed-path blob overwrites are eventually consistent on the
+// order of tens of seconds — fatal for live HLS, where players re-fetch the
+// playlist every ~2s. Segments are immutable (never overwritten), so listing
+// them is always coherent, and blackout wins before we even look at Blob:
+// panic is instant here no matter what the publisher is doing.
+const SEG_SECONDS = 2; // must match capture.sh's SEG_SECONDS
+const WINDOW = 90; // segments visible to players; older ones slide off
+
 const TOMBSTONE =
-  ["#EXTM3U", "#EXT-X-VERSION:3", "#EXT-X-TARGETDURATION:2", "#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-ENDLIST"].join("\n") +
-  "\n";
+  ["#EXTM3U", "#EXT-X-VERSION:3", `#EXT-X-TARGETDURATION:${SEG_SECONDS}`, "#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-ENDLIST"].join(
+    "\n"
+  ) + "\n";
 
 const HEADERS = {
   "content-type": "application/vnd.apple.mpegurl",
@@ -19,14 +25,33 @@ const HEADERS = {
 
 export async function GET() {
   const s = await readSession();
-  if (!s.live || s.blackout || !s.stream_url) {
+  // stream_url holds the current broadcast's segment prefix, e.g. "stream/ab12cd34"
+  // (per-session and random, so a past session's urls die with the session).
+  if (!s.live || s.blackout || !s.stream_url || !s.stream_url.startsWith("stream/")) {
     return new NextResponse(TOMBSTONE, { headers: HEADERS });
   }
   try {
-    // Unique query per request punches through Blob's CDN cache.
-    const res = await fetch(`${s.stream_url}?t=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) return new NextResponse(TOMBSTONE, { headers: HEADERS });
-    return new NextResponse(await res.text(), { headers: HEADERS });
+    const { blobs } = await list({ prefix: `${s.stream_url}/seg_`, limit: 1000 });
+    const segs = blobs
+      .filter((b) => /seg_\d+\.ts$/.test(b.pathname))
+      .sort((a, b) => (a.pathname < b.pathname ? -1 : 1))
+      .slice(-WINDOW);
+    if (segs.length === 0) {
+      // Warm-up: LIVE, but no footage has aged past the delay window yet.
+      return new NextResponse(TOMBSTONE, { headers: HEADERS });
+    }
+    const firstSeq = Number(segs[0].pathname.match(/seg_(\d+)\.ts$/)?.[1] ?? 0);
+    const lines = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:3",
+      `#EXT-X-TARGETDURATION:${SEG_SECONDS}`,
+      `#EXT-X-MEDIA-SEQUENCE:${firstSeq}`,
+    ];
+    for (const b of segs) {
+      lines.push(`#EXTINF:${SEG_SECONDS.toFixed(3)},`);
+      lines.push(b.url);
+    }
+    return new NextResponse(lines.join("\n") + "\n", { headers: HEADERS });
   } catch {
     return new NextResponse(TOMBSTONE, { headers: HEADERS }); // fail closed: dark
   }

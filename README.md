@@ -71,18 +71,22 @@ SCREEN_INDEX=1 OUT_DIR=./capture-out ../capture/capture.sh &
 OUT_DIR=./capture-out node publish.mjs
 ```
 
-The publisher is a subscriber of the control plane: it publishes only while the
-session is LIVE, and on **panic** it tombstones the public playlist and deletes
-every segment it published — nothing recorded before the panic can publish
-again, even after a new Go Live. If it can't reach `SESSION_URL`, it publishes
-nothing (fail closed).
+The publisher is a subscriber of the control plane: it uploads only while the
+session is LIVE, and on **panic** it deletes every segment it published —
+nothing recorded before the panic can publish again, even after a new Go Live.
+If it can't reach `SESSION_URL`, it publishes nothing (fail closed).
 
-Copy the printed `stream.m3u8` URL.
+There is no playlist blob: the app builds `/api/stream.m3u8` on demand by
+listing the immutable segments (blob overwrites are too slow for live HLS).
+Segments live under a per-run random prefix and only the newest ~10 minutes
+stay public — no permanent archive accumulates.
+
+Copy the printed `stream/<id>` value.
 
 ### 3. Go live
 
 Open `https://humaninside.dev/control`, enter your `BROADCAST_SECRET`, paste the
-stream URL, set name + what you're working on, hit **Go Live**.
+stream value, set name + what you're working on, hit **Go Live**.
 
 Open `https://humaninside.dev` in another browser — you'll see yourself, ~45s
 behind. Hit **panic** in `/control` to black it out instantly.

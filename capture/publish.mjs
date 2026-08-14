@@ -1,38 +1,40 @@
 #!/usr/bin/env node
 // Human Inside — delayed publisher.
-// Watches the local HLS output and publishes to Vercel Blob ONLY segments that
+// Watches the local HLS output and uploads to Vercel Blob ONLY segments that
 // are older than DELAY_SECONDS. This is the safety buffer made concrete: nothing
-// reaches the public playlist until it has aged past the delay window, giving the
+// reaches the public until it has aged past the delay window, giving the
 // broadcaster time to hit panic before any given moment goes public.
 //
+// The publisher never writes a playlist — the app builds one on demand by
+// listing the segments (mutable blob overwrites are eventually consistent and
+// far too slow for live HLS). Segments live under a per-run random prefix, so
+// a past session's urls die with the session.
+//
 // The publisher is a subscriber of the control plane: it polls /api/session and
-// only publishes while the session is LIVE. Panic (blackout) makes it stop,
-// tombstone the public playlist, and DELETE the segments it already published —
-// severing the pipe itself, not just the front-end pointer to it. If the session
-// endpoint can't be reached, it fails closed and publishes nothing.
+// only uploads while the session is LIVE. Panic (blackout) makes it stop,
+// DELETE everything it published, and refuse to ever publish footage recorded
+// before the panic moment. If the session endpoint can't be reached, it fails
+// closed and uploads nothing.
 //
 // Env:
 //   BLOB_READ_WRITE_TOKEN  — Vercel Blob token (vercel env pull, or dashboard)
 //   SESSION_URL            — the app's /api/session endpoint (required)
 //   DELAY_SECONDS          — how far behind real time (default 45)
 //   OUT_DIR                — local capture dir (default ./capture-out)
-//
-// The public playlist is written LAST, referencing only already-uploaded (aged)
-// segments — so a viewer never sees a segment url that points at fresh footage.
+import { randomBytes } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { put, del } from "@vercel/blob";
 
 const DELAY = Number(process.env.DELAY_SECONDS ?? 45);
 const OUT_DIR = process.env.OUT_DIR ?? "./capture-out";
-const SEG_SECONDS = Number(process.env.SEG_SECONDS ?? 2);
 const SESSION_URL = process.env.SESSION_URL;
-const PREFIX = "stream";
+const RUN_ID = randomBytes(4).toString("hex");
+const PREFIX = `stream/${RUN_ID}`;
 const POLL_MS = 1000;
+const RETAIN = 300; // ~10 min of public footage; older segments are deleted
 
-const uploaded = new Map(); // seg filename -> public url
-let playlistUrl = null;
-let tombstoned = false; // public playlist currently shows ENDLIST-and-nothing
+const uploaded = new Map(); // seg filename -> public url (insertion-ordered)
 let panicAtMs = null; // segments recorded before this moment NEVER publish
 let stopped = false;
 
@@ -47,65 +49,25 @@ async function fetchSession() {
 }
 
 async function uploadSegment(file) {
-  if (uploaded.has(file)) return uploaded.get(file);
+  if (uploaded.has(file)) return;
   const buf = await readFile(join(OUT_DIR, file));
   const { url } = await put(`${PREFIX}/${file}`, buf, {
     access: "public",
     contentType: "video/mp2t",
     addRandomSuffix: false,
-    allowOverwrite: true,
     cacheControlMaxAge: 31536000, // immutable while published; deleted on panic
   });
   uploaded.set(file, url);
-  return url;
 }
 
-async function publishPlaylist(segments) {
-  // Build a fresh media playlist over the aged segments. Sliding window of the
-  // last N so the file (and viewer buffer) stays bounded.
-  const WINDOW = 90; // ~90 segments visible; older ones drop off
-  const slice = segments.slice(-WINDOW);
-  const mediaSeq = Math.max(0, segments.length - slice.length);
-  const lines = [
-    "#EXTM3U",
-    "#EXT-X-VERSION:3",
-    `#EXT-X-TARGETDURATION:${Math.ceil(SEG_SECONDS)}`,
-    `#EXT-X-MEDIA-SEQUENCE:${mediaSeq}`,
-  ];
-  for (const s of slice) {
-    lines.push(`#EXTINF:${SEG_SECONDS.toFixed(3)},`);
-    lines.push(uploaded.get(s));
-  }
-  const body = lines.join("\n") + "\n";
-  const { url } = await put(`${PREFIX}/stream.m3u8`, body, {
-    access: "public",
-    contentType: "application/vnd.apple.mpegurl",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 0, // playlist must always be fresh
-  });
-  return url;
-}
-
-// Overwrite the public playlist with an ended, empty one. Already-connected
-// players stop; the fixed .m3u8 url goes dead even for someone who saved it.
-async function tombstonePlaylist() {
-  const body = [
-    "#EXTM3U",
-    "#EXT-X-VERSION:3",
-    `#EXT-X-TARGETDURATION:${Math.ceil(SEG_SECONDS)}`,
-    "#EXT-X-MEDIA-SEQUENCE:0",
-    "#EXT-X-ENDLIST",
-  ].join("\n") + "\n";
-  const { url } = await put(`${PREFIX}/stream.m3u8`, body, {
-    access: "public",
-    contentType: "application/vnd.apple.mpegurl",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 0,
-  });
-  tombstoned = true;
-  return url;
+// Keep the public footprint bounded: only the newest RETAIN segments stay up.
+// This is both hygiene and safety — no permanent public archive accumulates.
+async function pruneOld() {
+  const excess = uploaded.size - RETAIN;
+  if (excess <= 0) return;
+  const oldest = [...uploaded.entries()].slice(0, excess);
+  await del(oldest.map(([, url]) => url));
+  for (const [file] of oldest) uploaded.delete(file);
 }
 
 // Panic: the recent past is what most needs to disappear. Delete every segment
@@ -116,8 +78,6 @@ async function eraseUploaded() {
   uploaded.clear();
 }
 
-let lastPublishedCount = 0;
-
 async function tick() {
   const session = await fetchSession();
   if (!session) {
@@ -126,12 +86,10 @@ async function tick() {
   }
 
   if (session.blackout) {
-    if (!tombstoned || uploaded.size) {
+    if (uploaded.size) {
       panicAtMs = Date.now(); // everything recorded up to now stays private forever
-      await tombstonePlaylist();
       await eraseUploaded();
-      lastPublishedCount = 0;
-      console.log("\nPANIC observed — playlist tombstoned, published segments deleted.");
+      console.log("\nPANIC observed — all published segments deleted.");
       console.log("Footage recorded before this moment will not publish, even after a new Go Live.");
     }
     process.stdout.write("\rblackout — holding dark                              ");
@@ -139,16 +97,11 @@ async function tick() {
   }
 
   if (!session.live) {
-    if (!tombstoned) {
-      await tombstonePlaylist();
-      lastPublishedCount = 0;
-      console.log("\nsession not live — playlist tombstoned; waiting for Go Live.");
-    }
     process.stdout.write("\roffline — waiting for Go Live                        ");
     return;
   }
 
-  // LIVE: publish segments that have aged past the delay window.
+  // LIVE: upload segments that have aged past the delay window.
   let files;
   try {
     files = (await readdir(OUT_DIR)).filter((f) => /^seg_\d+\.ts$/.test(f)).sort();
@@ -168,16 +121,10 @@ async function tick() {
       /* file rotated away mid-scan */
     }
   }
-  if (aged.length === 0) return;
-
   for (const f of aged) await uploadSegment(f);
-  if (aged.length !== lastPublishedCount || tombstoned) {
-    playlistUrl = await publishPlaylist(aged);
-    tombstoned = false;
-    lastPublishedCount = aged.length;
-  }
+  await pruneOld();
   process.stdout.write(
-    `\rpublished ${aged.length} aged segs · delay ${DELAY}s · ${playlistUrl.split("/").slice(-1)[0]}     `
+    `\rpublic: ${uploaded.size} aged segs · delay ${DELAY}s · prefix ${PREFIX}     `
   );
 }
 
@@ -195,20 +142,13 @@ async function main() {
   }
   console.log(`Human Inside · delayed publisher · ${DELAY}s behind · dir=${OUT_DIR}`);
   console.log(`  control plane: ${SESSION_URL}`);
-
-  // Publish the tombstone up front: it claims the fixed playlist url so we can
-  // print it for /control before anything is live (players see an ended stream).
+  console.log(`  stream:        ${PREFIX}`);
+  console.log(`Paste that stream value into /control, then Go Live.\n`);
   const session = await fetchSession();
   if (!session) {
     console.error("Cannot reach SESSION_URL — check the deploy, then rerun.");
     process.exit(1);
   }
-  if (!session.live) {
-    playlistUrl = await tombstonePlaylist();
-  }
-  console.log(`  stream url:    ${playlistUrl ?? "(live session in progress — publishing resumes)"}`);
-  console.log("Set the stream url in /control, then Go Live.\n");
-
   while (!stopped) {
     await tick().catch((e) => console.error("\ntick error:", e.message));
     await new Promise((r) => setTimeout(r, POLL_MS));

@@ -8,7 +8,7 @@ export type SessionState = {
   live: boolean; // is the broadcast public right now
   blackout: boolean; // panic engaged — viewers see darkness even if segments exist
   started_at: number | null; // epoch ms the current LIVE session began (for elapsed)
-  stream_url: string | null; // HLS playlist the public <video> should play
+  stream_url: string | null; // current broadcast's segment prefix, e.g. "stream/ab12cd34"
   delay_seconds: number; // how far behind real time the public stream runs
   updated_at: number;
 };

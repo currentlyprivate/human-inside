@@ -166,7 +166,7 @@ export default function Viewer() {
 
       <footer style={{ display: "flex", justifyContent: "space-between", gap: "1em", flexWrap: "wrap" }}>
         <a href="https://github.com/currentlycurrently/humaninside.dev">github</a>
-        <a href="mailto:chuck.yatsuk@gmail.com">chuck.yatsuk@gmail.com</a>
+        <a href="mailto:email@currently.website">email@currently.website</a>
       </footer>
     </main>
   );

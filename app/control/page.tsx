@@ -78,8 +78,8 @@ export default function Control() {
       </label>
 
       <label style={row}>
-        stream url (hls .m3u8)
-        <input style={input} value={streamUrl} onChange={(e) => setStreamUrl(e.target.value)} placeholder="https://…/stream.m3u8" />
+        stream (printed by the publisher)
+        <input style={input} value={streamUrl} onChange={(e) => setStreamUrl(e.target.value)} placeholder="stream/ab12cd34" />
       </label>
 
       <label style={row}>
