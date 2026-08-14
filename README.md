@@ -60,6 +60,7 @@ Point `humaninside.dev` at this project in Vercel → Domains.
 cd capture
 npm install
 export BLOB_READ_WRITE_TOKEN=...     # same token as the app
+export SESSION_URL=https://humaninside.dev/api/session   # the control plane
 export DELAY_SECONDS=45
 
 # find your screen device index:
@@ -69,6 +70,12 @@ SCREEN_INDEX=1 OUT_DIR=./capture-out ../capture/capture.sh &
 # start the delayed publisher:
 OUT_DIR=./capture-out node publish.mjs
 ```
+
+The publisher is a subscriber of the control plane: it publishes only while the
+session is LIVE, and on **panic** it tombstones the public playlist and deletes
+every segment it published — nothing recorded before the panic can publish
+again, even after a new Go Live. If it can't reach `SESSION_URL`, it publishes
+nothing (fail closed).
 
 Copy the printed `stream.m3u8` URL.
 
