@@ -97,62 +97,29 @@ export default function Viewer() {
   useHls(videoRef, live ? state?.stream_url ?? null : null);
 
   return (
-    <main
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        flexDirection: "column",
-        padding: "clamp(16px, 4vw, 40px)",
-        gap: "clamp(14px, 2.5vw, 24px)",
-      }}
-    >
-      {/* Header — the whole identity of the broadcast, one quiet line each. */}
-      <header style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <span style={{ fontSize: 14, letterSpacing: "0.14em", color: "var(--ink-dim)", textTransform: "uppercase" }}>
-            Human Inside
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
-            {live ? (
-              <>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: "var(--live)" }}>
-                  <span className="pulse" />
-                  LIVE
-                </span>
-                <span style={{ color: "var(--ink-dim)", fontVariantNumeric: "tabular-nums" }}>{elapsed}</span>
-              </>
-            ) : (
-              <span style={{ color: "var(--ink-faint)" }}>offline</span>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 22, color: "var(--ink)" }}>{state?.name || "—"}</span>
-          {state?.working_on ? (
-            <span style={{ fontSize: 14, color: "var(--ink-dim)" }}>{state.working_on}</span>
-          ) : null}
-        </div>
+    <main style={{ minHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column", gap: "0.75em" }}>
+      <header>
+        <h1>Human Inside</h1>
+        <p>
+          {live ? (
+            <>
+              <b style={{ color: "red" }}>LIVE</b> {elapsed} — {state?.name || "someone"}
+              {state?.working_on ? <>, working on {state.working_on}</> : null}
+            </>
+          ) : (
+            <>offline</>
+          )}
+        </p>
       </header>
 
-      {/* The window. A large, quiet view of the work. */}
+      {/* The window. The one dark, designed thing on the page. */}
       <section
         style={{
           flex: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "var(--window)",
-          border: "1px solid var(--edge)",
-          borderRadius: 6,
+          background: "#2b2b2e",
           overflow: "hidden",
           position: "relative",
           minHeight: "40vh",
@@ -164,39 +131,25 @@ export default function Viewer() {
             muted
             playsInline
             autoPlay
-            style={{ width: "100%", height: "100%", objectFit: "contain", background: "var(--window)" }}
+            style={{ width: "100%", height: "100%", objectFit: "contain", background: "#2b2b2e" }}
           />
         ) : (
-          <div style={{ textAlign: "center", color: "var(--window-ink-faint)", fontSize: 13, lineHeight: 1.9 }}>
-            <div style={{ color: "var(--window-ink)", fontSize: 15 }}>the window is dark</div>
-            <div>no one is working right now</div>
+          <div style={{ textAlign: "center", color: "#8f8f96", lineHeight: 1.9 }}>
+            <div>the window is dark</div>
+            <div style={{ color: "#5c5c62" }}>no one is working right now</div>
           </div>
         )}
       </section>
 
-      {/* Footer — the honest disclaimer. The delay is the safety mechanism. */}
-      <footer style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--ink-faint)", flexWrap: "wrap", gap: 8 }}>
-        <span>a human, working, with AI</span>
-        {live && state?.delay_seconds ? (
-          <span>shown ~{state.delay_seconds}s behind real time</span>
-        ) : (
-          <span>slow tv for the age of AI</span>
-        )}
-      </footer>
+      <p>
+        A human, working, with AI.
+        {live && state?.delay_seconds ? <> Shown about {state.delay_seconds} seconds behind real time.</> : null}
+      </p>
 
-      <style>{`
-        .pulse {
-          width: 8px; height: 8px; border-radius: 50%;
-          background: var(--live);
-          box-shadow: 0 0 0 0 rgba(196,87,61,0.5);
-          animation: pulse 2.4s ease-out infinite;
-        }
-        @keyframes pulse {
-          0% { box-shadow: 0 0 0 0 rgba(196,87,61,0.45); }
-          70% { box-shadow: 0 0 0 7px rgba(196,87,61,0); }
-          100% { box-shadow: 0 0 0 0 rgba(196,87,61,0); }
-        }
-      `}</style>
+      <footer style={{ display: "flex", justifyContent: "space-between", gap: "1em", flexWrap: "wrap" }}>
+        <a href="https://github.com/currentlycurrently/humaninside.dev">github</a>
+        <a href="mailto:chuck.yatsuk@gmail.com">chuck.yatsuk@gmail.com</a>
+      </footer>
     </main>
   );
 }
