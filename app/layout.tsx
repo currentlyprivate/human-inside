@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,6 +17,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>{children}</body>
+      {/* First-party visit analytics (currently.website / lookout). */}
+      <Script
+        src="https://lookout-api.currently.website/t.js"
+        data-site="site_ae80da6b"
+        strategy="afterInteractive"
+      />
     </html>
   );
 }

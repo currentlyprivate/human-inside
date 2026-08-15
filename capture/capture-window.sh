@@ -15,6 +15,14 @@ FPS="${FPS:-2}"                  # stills per second; 2 is plenty for a terminal
 SEG_SECONDS="${SEG_SECONDS:-2}"
 CRF="${CRF:-28}"
 SCALE="${SCALE:-1600:-2}"
+# BROADCAST_TAG scopes capture to ONE designated window: only Ghostty windows
+# whose TITLE contains this tag are eligible to go on air. Private windows
+# (secret projects, the Human Inside launch itself) stay dark even when focused.
+# Empty = legacy behaviour (follow the frontmost Ghostty tab, whichever window).
+# When set and nothing matches, the feed FREEZES (fail closed), never falling
+# back to whatever's frontmost. Tag your broadcast window's tabs with this
+# string (see RUNBOOK) before Go Live.
+BROADCAST_TAG="${BROADCAST_TAG:-}"
 
 cd "$(dirname "$0")"
 mkdir -p "$OUT_DIR"
@@ -31,14 +39,20 @@ BIN=".get-window-id"
 if [ ! -x "$BIN" ] || [ get-window-id.swift -nt "$BIN" ]; then
   xcrun swiftc -O get-window-id.swift -o "$BIN"
 fi
-echo "Human Inside · following the frontmost $APP_NAME tab @ ${FPS}fps → $OUT_DIR"
-echo "  (whatever $APP_NAME tab you focus is ON AIR; segments every ${SEG_SECONDS}s)"
+if [ -n "$BROADCAST_TAG" ]; then
+  echo "Human Inside · following the frontmost $APP_NAME tab TITLED \"$BROADCAST_TAG\" @ ${FPS}fps → $OUT_DIR"
+  echo "  (only tabs whose title contains \"$BROADCAST_TAG\" are ON AIR; untagged windows stay dark — feed FREEZES if none match)"
+else
+  echo "Human Inside · following the frontmost $APP_NAME tab @ ${FPS}fps → $OUT_DIR"
+  echo "  (whatever $APP_NAME tab you focus is ON AIR; segments every ${SEG_SECONDS}s)"
+fi
 
 # Strictly paced capture loop: emits one JPEG per 1/FPS seconds to stdout.
 # python3 keeps the cadence exact so timestamps don't drift over hours.
-python3 - "$BIN" "$APP_NAME" "$FPS" <<'PY' |
+python3 - "$BIN" "$APP_NAME" "$FPS" "$BROADCAST_TAG" <<'PY' |
 import subprocess, sys, time, os, tempfile
 bin_path, app_name, fps = sys.argv[1], sys.argv[2], float(sys.argv[3])
+tag = sys.argv[4] if len(sys.argv) > 4 else ""
 interval = 1.0 / fps
 out = sys.stdout.buffer
 tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False).name
@@ -48,9 +62,10 @@ window_id, title, last_resolve = None, None, 0.0
 try:
     while True:
         now = time.monotonic()
-        if now - last_resolve >= 1.0:  # follow the frontmost tab, cheaply
+        if now - last_resolve >= 1.0:  # follow the frontmost eligible tab, cheaply
             last_resolve = now
-            r = subprocess.run(["./" + bin_path, app_name], capture_output=True, text=True)
+            argv = ["./" + bin_path, app_name] + ([tag] if tag else [])
+            r = subprocess.run(argv, capture_output=True, text=True)
             if r.returncode == 0:
                 lines = r.stdout.splitlines()
                 new_id = lines[0] if lines else None
@@ -58,6 +73,12 @@ try:
                 if new_id and new_id != window_id:
                     window_id, title = new_id, new_title
                     print(f"\n>>> now on air: “{title or app_name}” (window {window_id})", file=sys.stderr)
+            elif tag and window_id is not None:
+                # Tagged mode, no eligible window frontmost (e.g. you switched to
+                # a private/untagged window). DROP the target so the feed holds
+                # dark instead of continuing to broadcast the last tagged tab.
+                window_id, title = None, None
+                print(f"\n>>> no tab titled “{tag}” on top — feed held dark", file=sys.stderr)
         if window_id:
             r = subprocess.run(["screencapture", "-x", "-o", "-l", window_id, "-t", "jpg", tmp])
             if r.returncode == 0 and os.path.getsize(tmp) > 0:
