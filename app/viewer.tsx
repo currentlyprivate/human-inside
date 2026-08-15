@@ -9,7 +9,22 @@ type PublicState = {
   started_at: number | null;
   stream_url: string | null;
   delay_seconds: number;
+  total_seconds: number;
 };
+
+// The window's fixed shape. The video letterboxes inside this box, so resizing
+// the source Ghostty window mid-broadcast never reflows the page.
+const WINDOW_ASPECT = "16 / 10";
+const WINDOW_BG = "#1c1c1e"; // the one dark, designed surface
+const DIM = "#8f8f96"; // dark-state primary text
+const DIMMER = "#5c5c62"; // dark-state secondary text
+
+// "1,204 minutes" — the number that only grows. Whole minutes; commas so the
+// harrowing scale reads at a glance.
+function formatLogged(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  return `${mins.toLocaleString("en-US")} minute${mins === 1 ? "" : "s"} logged`;
+}
 
 function useElapsed(startedAt: number | null): string {
   const [now, setNow] = useState<number>(() => Date.now());
@@ -83,6 +98,7 @@ function useHls(
 export default function Viewer() {
   const [state, setState] = useState<PublicState | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
   // Poll the control plane. Cheap JSON; keeps the window honest about LIVE/dark.
   useEffect(() => {
@@ -109,6 +125,28 @@ export default function Viewer() {
   const showing = live || rerun;
   const elapsed = useElapsed(live ? state?.started_at ?? null : null);
 
+  // The cumulative logged time. The banked total lives in state; while live we
+  // add the current session's seconds on top so the number climbs in real time
+  // without a write every second. The 1s tick from useElapsed re-renders us.
+  const liveSeconds =
+    live && state?.started_at
+      ? Math.max(0, Math.floor((Date.now() - state.started_at) / 1000))
+      : 0;
+  const totalLogged = (state?.total_seconds ?? 0) + liveSeconds;
+
+  const [isFull, setIsFull] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFull(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFullscreen = () => {
+    const el = mainRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else el.requestFullscreen().catch(() => {});
+  };
+
   // While LIVE with no picture (footage still aging through the delay window),
   // retry the player every few seconds instead of giving up on an empty playlist.
   const [attempt, setAttempt] = useState(0);
@@ -126,7 +164,17 @@ export default function Viewer() {
   useHls(videoRef, showing ? "/api/stream.m3u8" : null, attempt, live ? "live" : "rerun");
 
   return (
-    <main style={{ minHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column", gap: "0.75em" }}>
+    <main
+      ref={mainRef}
+      style={{
+        minHeight: "calc(100dvh - 16px)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.75em",
+        maxWidth: "56rem",
+        margin: "0 auto",
+      }}
+    >
       <header>
         <h1>Human Inside</h1>
         <p>
@@ -146,17 +194,20 @@ export default function Viewer() {
         </p>
       </header>
 
-      {/* The window. The one dark, designed thing on the page. */}
+      {/* The window: a fixed-aspect dark specimen floating in whitespace. The
+          video letterboxes inside, so resizing the source never reflows this. */}
       <section
         style={{
-          flex: 1,
+          alignSelf: "center",
+          width: "100%",
+          aspectRatio: WINDOW_ASPECT,
+          maxHeight: "70vh",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#2b2b2e",
+          background: WINDOW_BG,
           overflow: "hidden",
           position: "relative",
-          minHeight: "40vh",
         }}
       >
         {showing ? (
@@ -166,24 +217,36 @@ export default function Viewer() {
             playsInline
             autoPlay
             loop={rerun}
-            style={{ width: "100%", height: "100%", objectFit: "contain", background: "#2b2b2e" }}
+            style={{ width: "100%", height: "100%", objectFit: "contain", background: WINDOW_BG }}
           />
         ) : (
-          <div style={{ textAlign: "center", color: "#8f8f96", lineHeight: 1.9 }}>
+          <div style={{ textAlign: "center", color: DIM, lineHeight: 1.9 }}>
             <div>the window is dark</div>
-            <div style={{ color: "#5c5c62" }}>no one is working right now</div>
+            <div style={{ color: DIMMER }}>no one is working right now</div>
           </div>
         )}
       </section>
 
-      <p>
-        A human, working, with AI.
-        {live && state?.delay_seconds ? <> Shown about {state.delay_seconds} seconds behind real time.</> : null}
+      <p style={{ display: "flex", justifyContent: "space-between", gap: "1em", flexWrap: "wrap", margin: 0 }}>
+        <span>
+          A human, working, with AI.
+          {live && state?.delay_seconds ? <> Shown about {state.delay_seconds} seconds behind real time.</> : null}
+        </span>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          style={{ font: "inherit", color: "inherit", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
+        >
+          {isFull ? "exit fullscreen" : "fullscreen"}
+        </button>
       </p>
 
       <footer style={{ display: "flex", justifyContent: "space-between", gap: "1em", flexWrap: "wrap" }}>
-        <a href="https://github.com/currentlycurrently/humaninside.dev">github</a>
-        <a href="mailto:email@currently.website">email@currently.website</a>
+        <span>{formatLogged(totalLogged)}</span>
+        <span style={{ display: "flex", gap: "1em" }}>
+          <a href="https://github.com/currentlyprivate/human-inside">github</a>
+          <a href="mailto:email@currently.website">email@currently.website</a>
+        </span>
       </footer>
     </main>
   );

@@ -10,6 +10,7 @@ export type SessionState = {
   started_at: number | null; // epoch ms the current LIVE session began (for elapsed)
   stream_url: string | null; // current broadcast's segment prefix, e.g. "stream/ab12cd34"
   delay_seconds: number; // how far behind real time the public stream runs
+  total_seconds: number; // cumulative live time across all sessions ever — the number that only grows
   updated_at: number;
 };
 
@@ -28,6 +29,7 @@ export const DEFAULT_STATE: SessionState = {
   started_at: null,
   stream_url: null,
   delay_seconds: 45,
+  total_seconds: 0,
   updated_at: 0,
 };
 
@@ -70,6 +72,17 @@ export async function writeSession(next: SessionState): Promise<SessionState> {
   return withStamp;
 }
 
+// Fold a live session's elapsed time into the cumulative total, exactly once,
+// at the moment it stops being live. Every exit path — stop, reset, panic —
+// runs through here so no worked minute is ever dropped (panic still counts:
+// the number is time LOGGED, not time published). Idempotent: if the session
+// isn't currently live, or has no start, it returns the total unchanged.
+export function foldElapsedIntoTotal(current: SessionState): number {
+  if (!current.live || current.started_at == null) return current.total_seconds;
+  const elapsed = Math.max(0, Math.floor((Date.now() - current.started_at) / 1000));
+  return current.total_seconds + elapsed;
+}
+
 // A viewer never sees the raw state — blackout must win no matter what.
 // blackout is exposed so the publisher can tell panic apart from a plain stop
 // (panic makes it erase recent public segments, not just halt).
@@ -84,5 +97,8 @@ export function publicView(s: SessionState) {
     // blackout still severs it entirely.
     stream_url: s.blackout ? null : s.stream_url,
     delay_seconds: s.delay_seconds,
+    // The cumulative number. While live, the client adds the current elapsed
+    // on top of this so it ticks up without a write every second.
+    total_seconds: s.total_seconds,
   };
 }

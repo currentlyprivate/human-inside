@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
-import { readSession, writeSession, publicView, DEFAULT_STATE } from "@/lib/session";
+import {
+  readSession,
+  writeSession,
+  publicView,
+  foldElapsedIntoTotal,
+  DEFAULT_STATE,
+} from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +40,8 @@ export async function POST(req: Request) {
       next.blackout = false;
     }
     if (!body.live) {
+      // Stopping: bank the elapsed time before dropping the clock.
+      next.total_seconds = foldElapsedIntoTotal(current);
       next.started_at = null;
     }
     next.live = body.live;
@@ -44,10 +52,16 @@ export async function POST(req: Request) {
 }
 
 // Broadcaster: hard reset back to nothing (clears name/working-on too).
+// The cumulative total is never reset — it only grows — so bank any in-flight
+// live time and carry the running total across the wipe.
 export async function DELETE(req: Request) {
   if (!isAuthed(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const saved = await writeSession({ ...DEFAULT_STATE });
+  const current = await readSession();
+  const saved = await writeSession({
+    ...DEFAULT_STATE,
+    total_seconds: foldElapsedIntoTotal(current),
+  });
   return NextResponse.json({ ok: true, state: saved });
 }
