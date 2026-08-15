@@ -1,0 +1,8 @@
+# Never upload local capture output to a deployment — footage segments carry a
+# .ts extension and would otherwise be typechecked as TypeScript (build break),
+# and this is the machine-side footage that must never leave this Mac.
+capture/capture-out/
+
+# Local-only env + ops notes
+.env*.local
+RUNBOOK.md
