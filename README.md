@@ -19,7 +19,7 @@ before any given moment goes public.
 ## Architecture
 
 ```
-Ghostty ─ ffmpeg (capture.sh) ─► local HLS segments
+Ghostty ─ ffmpeg (capture-window.sh) ─► local HLS segments
                                         │
                         publish.mjs (holds each segment
                         back until it is DELAY seconds old)
@@ -35,7 +35,8 @@ Ghostty ─ ffmpeg (capture.sh) ─► local HLS segments
 - **App** (Next.js on Vercel): the public window, the control cockpit, and the
   control API. High-bandwidth video never routes through app functions — it
   goes viewer ⇄ Blob directly.
-- **Capture** (your Mac): `capture.sh` runs ffmpeg; `publish.mjs` uploads only
+- **Capture** (your Mac): `capture-window.sh` runs ffmpeg on the Ghostty window
+  only (whole-screen `capture.sh` is the fallback); `publish.mjs` uploads only
   aged segments and writes the public playlist.
 
 ## Run it
@@ -46,11 +47,15 @@ Ghostty ─ ffmpeg (capture.sh) ─► local HLS segments
 npm install
 vercel link            # link to the humaninside project
 # Add Blob storage to the project (Vercel dashboard → Storage → Blob).
-# Set env vars on the project:
+# Set env vars on the project (all environments):
 #   BROADCAST_SECRET       = a long random string
 #   BLOB_READ_WRITE_TOKEN  = (added automatically with Blob storage)
-vercel --prod
+git push          # a git-connected project deploys on push
 ```
+
+Env vars are baked in at build time — set them *before* the deploy, or redeploy
+after adding them. Deploy from git, not `vercel --prod`: a CLI deploy uploads
+your local `capture-out/` footage (whose `.ts` segments break the type build).
 
 Point `humaninside.dev` at this project in Vercel → Domains.
 
@@ -63,10 +68,12 @@ export BLOB_READ_WRITE_TOKEN=...     # same token as the app
 export SESSION_URL=https://humaninside.dev/api/session   # the control plane
 export DELAY_SECONDS=45
 
-# find your screen device index:
-ffmpeg -f avfoundation -list_devices true -i ""
-# start capture (set SCREEN_INDEX to your screen's index):
-SCREEN_INDEX=1 OUT_DIR=./capture-out ../capture/capture.sh &
+# start capture — window-only (default): bring the Ghostty window to the front,
+# it broadcasts just that window; overlapping apps/notifications never enter frame.
+OUT_DIR=./capture-out ./capture-window.sh &
+# (whole-screen fallback, shows everything — turn on Do Not Disturb:
+#   ffmpeg -f avfoundation -list_devices true -i ""   # find the screen index
+#   SCREEN_INDEX=1 OUT_DIR=./capture-out ./capture.sh & )
 # start the delayed publisher:
 OUT_DIR=./capture-out node publish.mjs
 ```
